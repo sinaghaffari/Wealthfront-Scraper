@@ -18,6 +18,7 @@ import play.api.libs.ws.JsonBodyWritables._
 import play.api.libs.ws.ahc._
 import play.api.libs.ws.{DefaultWSCookie, WSCookie}
 
+import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 
 
@@ -29,6 +30,11 @@ object Main {
     implicit val config: Config = ConfigFactory.load()
     implicit val assetOverviewManager: AssetOverview.AssetOverviewManager = AssetOverview.AssetOverviewManager()
 
+    system.scheduler.scheduleAtFixedRate(0.seconds, 1.hour)(() => scrape())
+  }
+
+  def scrape()(implicit ws: StandaloneAhcWSClient, config: Config, system: ActorSystem, dispatcher: ExecutionContext,
+               assetOverviewManager: AssetOverview.AssetOverviewManager): Unit = {
     // Load config
     val username = config.getString("wealthfront.username")
     val password = config.getString("wealthfront.password")
