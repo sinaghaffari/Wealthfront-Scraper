@@ -115,12 +115,16 @@ object Main {
       )).mkString("\n") + "\n"
 
       // Make ES bulk API request
-      _ <- ws
+      esResponse <- ws
         .url(s"$esHostname/_bulk")
         .withHttpHeaders("Content-Type" -> "application/x-ndjson")
         .post(allAssetAllocationJson + allEtfJson + allCashJson + allStockJson + allTradeJson)
-        .map(Right.apply).?|
-    } yield ()
+        .map(Right.apply)
+        .map(_.map(_.body))
+        .map(_.map(Json.parse))
+        .map(_.map(Json.prettyPrint))
+        .?|
+    } yield println(s"${LocalDateTime.now} - $esResponse")
   }
 
   def login(username: String, password: String)(implicit ws: StandaloneAhcWSClient, dispatcher: ExecutionContext)
