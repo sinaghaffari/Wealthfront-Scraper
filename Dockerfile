@@ -1,4 +1,4 @@
-FROM mozilla/docker-sbt
+FROM mozilla/sbt:latest
 COPY project/ /wf-scraper/
 COPY src/ /wf-scraper/
 COPY build.sbt /wf-scraper
