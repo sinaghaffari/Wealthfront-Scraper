@@ -19,4 +19,4 @@ jobs:
     - name: Log into Registry
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
     - name: Push Image
-      run: docker push docker.pkg.github.com/sinaghaffari/Wealthfront-Scraper/Wealthfront-Scraper:latest
+      run: docker push docker.pkg.github.com/sinaghaffari/wealthfront-scraper/wealthfront-scraper:latest
