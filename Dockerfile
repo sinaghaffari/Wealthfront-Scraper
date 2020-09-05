@@ -1,7 +1,7 @@
 FROM mozilla/sbt:latest
-COPY project/ /wf-scraper/
-COPY src/ /wf-scraper/
-COPY build.sbt /wf-scraper
+COPY project/ /wf-scraper/project
+COPY src/ /wf-scraper/src/
+COPY build.sbt /wf-scraper/build.sbt
 RUN mkdir /wf-scraper/asset_overviews
 WORKDIR /wf-scraper
-ENTRYPOINT sbt
+ENTRYPOINT sbt run
