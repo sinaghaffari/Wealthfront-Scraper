@@ -1,4 +1,4 @@
-FROM openjdk:16-slim-buster
+FROM openjdk:16-buster
 ARG SBT_VERSION=1.3.13
 
 # Install sbt
