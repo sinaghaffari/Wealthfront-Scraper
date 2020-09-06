@@ -1,7 +1,9 @@
 package com.sinaghaffari.wf_scraper
 
 import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.time.LocalDateTime
+import java.util.Base64
 
 import akka.actor.ActorSystem
 import com.j256.twofactorauth.TimeBasedOneTimePasswordUtil
@@ -78,7 +80,6 @@ object Main {
     } yield res).run
     val esTransactionsFuture: Future[Either[Throwable, Seq[Trade]]] = (for {
       transactions: Map[Account, Seq[Transaction]] <- transactionsFuture.?|
-      _ = pprint.pprintln(transactions)
     } yield Trade.fromWealthfrontTransactionMap(transactions)).run
 
     // Wait for the above futures, create all the relevant JSON, and make the ElasticSearch request
@@ -109,7 +110,8 @@ object Main {
       allTradeJson: String = allTrade.flatMap(x => Seq(
         Json.obj("index" -> Json.obj(
           "_index" -> "wealthfront-trades",
-          "_id" -> s"${x.transaction_id}-${x.`type`}-${x.symbol}"
+          "_id" -> s"${Base64.getUrlEncoder.encodeToString(s"${x.transaction_id}${x.`type`}${x.symbol}${x.shares}${x
+            .share_price}".getBytes(StandardCharsets.UTF_8))}"
         )),
         Json.toJson(x)
       )).mkString("\n") + "\n"
@@ -132,14 +134,14 @@ object Main {
     ws.url("https://www.wealthfront.com/api/access/login")
       .withCookies(DefaultWSCookie("login_xsrf", "1234"))
       .withHttpHeaders(
-        "Content-Type" -> "application/json",
+        "Content-Type" -> "application/json"
       )
       .post(Json.obj(
         "loginXsrf" -> "1234",
         "username" -> username,
         "password" -> password,
         "recaptchaResponseToken" -> null,
-        "grantType" -> "password",
+        "grantType" -> "password"
       ))
       .map {
         case res if res.status == 200 => Right(res)
@@ -160,7 +162,7 @@ object Main {
     ws.url("https://www.wealthfront.com/api/access/mfa")
       .withCookies(cookies: _*)
       .withHttpHeaders(
-        "Content-Type" -> "application/json",
+        "Content-Type" -> "application/json"
       )
       .post(
         Json.obj(
@@ -169,7 +171,7 @@ object Main {
             .map(_.value)
             .map(URLDecoder.decode(_, "UTF-8")),
           "challengeResponse" -> TimeBasedOneTimePasswordUtil.generateCurrentNumberString(secret),
-          "rememberDevice" -> false,
+          "rememberDevice" -> false
         )
       )
       .map {
