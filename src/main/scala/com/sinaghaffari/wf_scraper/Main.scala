@@ -9,7 +9,7 @@ import akka.actor.ActorSystem
 import com.j256.twofactorauth.TimeBasedOneTimePasswordUtil
 import com.sinaghaffari.wf_scraper.models.alpha_vantage.AssetOverview
 import com.sinaghaffari.wf_scraper.models.elasticsearch.Asset._
-import com.sinaghaffari.wf_scraper.models.elasticsearch.{Asset, Trade}
+import com.sinaghaffari.wf_scraper.models.elasticsearch.{Asset, Dividend, Trade}
 import com.sinaghaffari.wf_scraper.models.wealthfront.{Account, AssetAllocation, Stock, Transaction}
 import com.sinaghaffari.wf_scraper.models.{LoginWSResponse, elasticsearch}
 import com.sinaghaffari.wf_scraper.util.MonadicSimplifier.simplifyFutureEither
@@ -22,6 +22,7 @@ import play.api.libs.ws.{DefaultWSCookie, WSCookie}
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.{Failure, Success}
 
 
 object Main {
@@ -78,17 +79,21 @@ object Main {
       directInvestmentAllocations: Map[Account, Seq[Stock]] <- directInvestmentAllocationsFuture.?|
       res <- Asset.fromWealthfrontStockMap(directInvestmentAllocations, timeNow).?|
     } yield res).run
-    val esTransactionsFuture: Future[Either[Throwable, Seq[Trade]]] = (for {
+    val esTradesFuture: Future[Either[Throwable, Seq[Trade]]] = (for {
       transactions: Map[Account, Seq[Transaction]] <- transactionsFuture.?|
     } yield Trade.fromWealthfrontTransactionMap(transactions)).run
+    val esDividendsFuture: Future[Either[Throwable, Seq[Dividend]]] = (for {
+      transactions: Map[Account, Seq[Transaction]] <- transactionsFuture.?|
+    } yield Dividend.fromWealthfrontTransactionMap(transactions)).run
 
     // Wait for the above futures, create all the relevant JSON, and make the ElasticSearch request
-    for {
+    val result = (for {
       // Wait for the futures
       allAssetAllocation <- esAssetAllocationsFuture.?|
       (allEtf, allCash) <- esEtfCashAssetAllocationsFuture.?|
       allStock <- esDIAllocationsFuture.?|
-      allTrade <- esTransactionsFuture.?|
+      allTrade <- esTradesFuture.?|
+      allDividend <- esDividendsFuture.?|
 
       // Convert models to JSON
       allAssetAllocationJson = allAssetAllocation.flatMap(x => Seq(
@@ -110,23 +115,40 @@ object Main {
       allTradeJson: String = allTrade.flatMap(x => Seq(
         Json.obj("index" -> Json.obj(
           "_index" -> "wealthfront-trades",
-          "_id" -> s"${Base64.getUrlEncoder.encodeToString(s"${x.transaction_id}${x.`type`}${x.symbol}${x.shares}${x
-            .share_price}".getBytes(StandardCharsets.UTF_8))}"
+          "_id" -> s"${
+            Base64.getUrlEncoder.encodeToString(s"${x.transaction_id}${x.`type`}${x.symbol}${x.shares}${
+              x
+                .share_price
+            }".getBytes(StandardCharsets.UTF_8))
+          }"
         )),
         Json.toJson(x)
+      )).mkString("\n") + "\n"
+      allDividendJson: String = allDividend.flatMap(x => Seq(
+        Json.obj("index" -> Json.obj(
+          "_index" -> "wealthfront-dividends",
+          "_id" -> s"${Base64.getUrlEncoder.encodeToString(s"${x.transaction_id}${x.symbol}${x.amount}".getBytes
+          (StandardCharsets.UTF_8))}"
+        )),
+        Json.toJson(x)(Dividend.dividendWrites)
       )).mkString("\n") + "\n"
 
       // Make ES bulk API request
       esResponse <- ws
         .url(s"$esHostname/_bulk")
         .withHttpHeaders("Content-Type" -> "application/x-ndjson")
-        .post(allAssetAllocationJson + allEtfJson + allCashJson + allStockJson + allTradeJson)
+        .post(allAssetAllocationJson + allEtfJson + allCashJson + allStockJson + allTradeJson + allDividendJson)
         .map(Right.apply)
         .map(_.map(_.body))
         .map(_.map(Json.parse))
         .map(_.map(Json.prettyPrint))
         .?|
-    } yield println(s"${LocalDateTime.now} - $esResponse")
+    } yield ()).run
+    result.onComplete {
+      case Success(Right(_)) => println("Done!")
+      case Success(Left(ex)) => throw ex
+      case Failure(ex) => throw ex
+    }
   }
 
   def login(username: String, password: String)(implicit ws: StandaloneAhcWSClient, dispatcher: ExecutionContext)
